@@ -16,7 +16,7 @@ templates = Jinja2Templates(directory="templates")
 posts: list[dict] = [
     {
         "id": 1,
-        "author": "Corey Schafer",
+        "author": "Corey in the house",
         "title": "FastAPI is Awesome",
         "content": "This framework is really easy to use and super fast.",
         "date_posted": "October 20, 2026",
@@ -30,7 +30,7 @@ posts: list[dict] = [
     },
     {
         "id": 3,
-        "author": "John Smith",
+        "author": "Mfo",
         "title": "Why I Love FastAPI",
         "content": "FastAPI is a modern web framework that allows you to build APIs quickly and efficiently.",
         "date_posted": "October 20, 2026",
