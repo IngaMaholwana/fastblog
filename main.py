@@ -336,16 +336,13 @@ async def delete_post(post_id: int, db: Annotated[AsyncSession, Depends(get_db)]
     await db.commit()
 
 @app.exception_handler(StarletteHTTPException)
-def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
-    message = (
-        exception.detail
-        if exception.detail
-        else "An error occurred. Please check your request and try again."
-    )
+async def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
     if request.url.path.startswith("/api"):
-        return JSONResponse(
-            status_code=exception.status_code,
-            content={"detail": message},
+        return await http_exception_handler(request, exception)
+    message = (
+            exception.detail
+            if exception.detail
+            else "An error occurred. Please check your request and try again."
         )
     return templates.TemplateResponse(
         request,
@@ -359,13 +356,41 @@ def general_http_exception_handler(request: Request, exception: StarletteHTTPExc
     )
 
 
-@app.exception_handler(RequestValidationError)
-def validation_exception_handler(request: Request, exception: RequestValidationError):
+
+@app.exception_handler(StarletteHTTPException)
+async def general_http_exception_handler(
+    request: Request,
+    exception: StarletteHTTPException,
+):
     if request.url.path.startswith("/api"):
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            content={"detail": exception.errors()},
-        )
+        return await http_exception_handler(request, exception)
+
+    message = (
+        exception.detail
+        if exception.detail
+        else "An error occurred. Please check your request and try again."
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "status_code": exception.status_code,
+            "title": exception.status_code,
+            "message": message,
+        },
+        status_code=exception.status_code,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request,
+    exception: RequestValidationError,
+):
+    if request.url.path.startswith("/api"):
+        return await request_validation_exception_handler(request, exception)
+
     return templates.TemplateResponse(
         request,
         "error.html",
