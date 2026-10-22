@@ -20,8 +20,10 @@ class UserPublic(BaseModel):
     image_file: str | None
     image_path: str
 
+
 class UserPrivate(UserPublic):
     email: EmailStr
+
 
 class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=50)
@@ -32,6 +34,7 @@ class UserUpdate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 class PostBase(BaseModel):
     title: str = Field(min_length=1, max_length=100)
@@ -53,4 +56,4 @@ class PostResponse(PostBase):
     id: int
     user_id: int
     date_posted: datetime
-    author: UserResponse
+    author: UserPublic
