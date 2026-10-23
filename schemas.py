@@ -41,8 +41,8 @@ class PostBase(BaseModel):
     content: str = Field(min_length=1)
 
 
-class PostCreate(PostBase):
-    user_id: int  # TEMPORARY
+class PostCreate(PostBase): #get from base
+    pass
 
 
 class PostUpdate(BaseModel):
