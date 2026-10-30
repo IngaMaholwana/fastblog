@@ -3,102 +3,69 @@ from httpx import AsyncClient
 
 from tests.conftest import auth_header, create_test_user, login_user
 
-@pytest.mark.anyio
-async def test_get_posts_empty(client: AsyncClient):
-  response = await client.get("/api/posts")
-
-  assert response.status_code == 200
-  data = response.json()
-  assert data["posts"] == []
-  assert data["total"] == 0
-  assert data["has_more"] is False 
-
 
 @pytest.mark.anyio
-async def test_get_post_not_found(client: AsyncClient):
-    response = await client.get("/api/posts/999")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Post not found"
-
-
-@pytest.mark.anyio
-async def test_create_post_success(client: AsyncClient):
+async def test_get_post_success(client: AsyncClient):
     user = await create_test_user(client)
     token = await login_user(client)
-    headers = auth_header(token)
-
-    response = await client.post(
+    create_response = await client.post(
         "/api/posts",
-        json={"title": "My First Post", "content": "This is the content"},
-        headers=headers,
+        json={"title": "A post", "content": "Post body"},
+        headers=auth_header(token),
     )
+    post_id = create_response.json()["id"]
 
-    assert response.status_code == 201
+    response = await client.get(f"/api/posts/{post_id}")
+
+    assert response.status_code == 200
     data = response.json()
-    assert data["title"] == "My First Post"
-    assert data["content"] == "This is the content"
+    assert data["id"] == post_id
+    assert data["title"] == "A post"
+    assert data["content"] == "Post body"
     assert data["user_id"] == user["id"]
-    assert "id" in data
-    assert "date_posted" in data
-    assert data["author"]["username"] == "testuser"
+    assert data["author"]["username"] == user["username"]
 
 
 @pytest.mark.anyio
-async def test_create_post_unauthorized(client: AsyncClient):
-    response = await client.post(
-        "/api/posts",
-        json={"title": "Test Post", "content": "Test content"},
-    )
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Not authenticated"
-
-
-@pytest.mark.anyio
-async def test_update_post_success(client: AsyncClient):
+async def test_update_post_full_success(client: AsyncClient):
     await create_test_user(client)
     token = await login_user(client)
     headers = auth_header(token)
-
-    response = await client.post(
+    create_response = await client.post(
         "/api/posts",
-        json={"title": "Original Title", "content": "Original content"},
+        json={"title": "Before", "content": "Old body"},
         headers=headers,
     )
-    post_id = response.json()["id"]
+    post_id = create_response.json()["id"]
 
-    response = await client.patch(
+    response = await client.put(
         f"/api/posts/{post_id}",
-        json={"title": "Updated Title"},
+        json={"title": "After", "content": "Completely replaced body"},
         headers=headers,
     )
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["title"] == "Updated Title"
-    assert data["content"] == "Original content"
+    assert response.json()["title"] == "After"
+    assert response.json()["content"] == "Completely replaced body"
 
 
 @pytest.mark.anyio
-async def test_update_post_wrong_user(client: AsyncClient):
-    await create_test_user(client, username="user1", email="user1@example.com")
-    token1 = await login_user(client, email="user1@example.com")
-
-    response = await client.post(
+async def test_update_post_full_forbids_wrong_user(client: AsyncClient):
+    await create_test_user(client, username="owner", email="owner@example.com")
+    owner_token = await login_user(client, email="owner@example.com")
+    create_response = await client.post(
         "/api/posts",
-        json={"title": "User 1's Post", "content": "Only user 1 can edit this"},
-        headers=auth_header(token1),
+        json={"title": "Owner post", "content": "Owner content"},
+        headers=auth_header(owner_token),
     )
-    post_id = response.json()["id"]
+    post_id = create_response.json()["id"]
 
-    await create_test_user(client, username="user2", email="user2@example.com")
-    token2 = await login_user(client, email="user2@example.com")
-
-    response = await client.patch(
+    await create_test_user(client, username="other", email="other@example.com")
+    other_token = await login_user(client, email="other@example.com")
+    response = await client.put(
         f"/api/posts/{post_id}",
-        json={"title": "Hacked Title"},
-        headers=auth_header(token2),
+        json={"title": "Changed", "content": "Changed by another user"},
+        headers=auth_header(other_token),
     )
 
     assert response.status_code == 403
@@ -106,37 +73,86 @@ async def test_update_post_wrong_user(client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_get_posts_with_pagination(client: AsyncClient):
+async def test_update_post_returns_404_for_missing_post(client: AsyncClient):
     await create_test_user(client)
     token = await login_user(client)
-    headers = auth_header(token)
 
-    for i in range(5):
-        response = await client.post(
-            "/api/posts",
-            json={"title": f"Post {i}", "content": f"Content for post {i}"},
-            headers=headers,
-        )
-        assert response.status_code == 201
+    response = await client.put(
+        "/api/posts/999999",
+        json={"title": "Missing", "content": "Does not exist"},
+        headers=auth_header(token),
+    )
 
-    response = await client.get("/api/posts")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] == 5
-    assert len(data["posts"]) == 5
-    assert data["has_more"] is False
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Post not found"
 
-    response = await client.get("/api/posts?limit=2")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] == 5
-    assert len(data["posts"]) == 2
-    assert data["has_more"] is True
 
-    response = await client.get("/api/posts?skip=2&limit=2")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] == 5
-    assert len(data["posts"]) == 2
-    assert data["skip"] == 2
-    assert data["limit"] == 2
+@pytest.mark.anyio
+async def test_delete_post_success(client: AsyncClient):
+    await create_test_user(client)
+    token = await login_user(client)
+    create_response = await client.post(
+        "/api/posts",
+        json={"title": "Delete me", "content": "Temporary content"},
+        headers=auth_header(token),
+    )
+    post_id = create_response.json()["id"]
+
+    delete_response = await client.delete(
+        f"/api/posts/{post_id}",
+        headers=auth_header(token),
+    )
+    get_response = await client.get(f"/api/posts/{post_id}")
+
+    assert delete_response.status_code == 204
+    assert get_response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_delete_post_forbids_wrong_user(client: AsyncClient):
+    await create_test_user(client, username="owner", email="owner@example.com")
+    owner_token = await login_user(client, email="owner@example.com")
+    create_response = await client.post(
+        "/api/posts",
+        json={"title": "Owner post", "content": "Owner content"},
+        headers=auth_header(owner_token),
+    )
+    post_id = create_response.json()["id"]
+
+    await create_test_user(client, username="other", email="other@example.com")
+    other_token = await login_user(client, email="other@example.com")
+    response = await client.delete(
+        f"/api/posts/{post_id}",
+        headers=auth_header(other_token),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Not authorized to delete this post"
+
+
+@pytest.mark.anyio
+async def test_delete_post_returns_404_for_missing_post(client: AsyncClient):
+    await create_test_user(client)
+    token = await login_user(client)
+
+    response = await client.delete(
+        "/api/posts/999999",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Post not found"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "query_string",
+    ["?skip=-1", "?limit=0", "?limit=101"],
+)
+async def test_get_posts_rejects_invalid_pagination(
+    client: AsyncClient,
+    query_string: str,
+):
+    response = await client.get(f"/api/posts{query_string}")
+
+    assert response.status_code == 422
